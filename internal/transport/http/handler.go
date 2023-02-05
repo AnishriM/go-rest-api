@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -29,15 +30,28 @@ func NewHandler(service *comment.Service) *Handler {
 	}
 }
 
+func BasicAuth(orginal func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		logrus.Info("Basic auth endpoint hit")
+		user, pass, ok := r.BasicAuth()
+		if user == "admin" && pass == "password" && ok {
+			orginal(w, r)
+		} else {
+			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			sendErrorResponse(w, "not authorized", errors.New("not authorized"))
+		}
+	}
+}
+
 // SetupRoutes - sets up all the routes for out application
 func (h *Handler) SetupRoutes() {
 	logrus.Info("Setting up the routes.")
 	h.Router = mux.NewRouter()
 	h.Router.HandleFunc("/api/comment", h.GetAllComments).Methods("GET")
-	h.Router.HandleFunc("/api/comment", h.PostComment).Methods("POST")
+	h.Router.HandleFunc("/api/comment", BasicAuth(h.PostComment)).Methods("POST")
 	h.Router.HandleFunc("/api/comment/{id}", h.GetComment).Methods("GET")
-	h.Router.HandleFunc("/api/comment/{id}", h.UpdateComment).Methods("PUT")
-	h.Router.HandleFunc("/api/comment/{id}", h.DeleteComment).Methods("DELETE")
+	h.Router.HandleFunc("/api/comment/{id}", BasicAuth(h.UpdateComment)).Methods("PUT")
+	h.Router.HandleFunc("/api/comment/{id}", BasicAuth(h.DeleteComment)).Methods("DELETE")
 	h.Router.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		if err := sendOkResponse(w, Response{Message: "I'm alive!"}); err != nil {
 			panic(err)
